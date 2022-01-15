@@ -1,0 +1,403 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+```
+
+```{r}
+library(haven)
+lfp <- read_dta("~/Library/Mobile Documents/com~apple~CloudDocs/CSPDE Lectures/Logit Lab/lfp.dta")
+View(lfp)
+```
+
+```{r}
+lfpdata<-lfp
+rm(lfp)
+```
+
+
+```{r}
+names(lfpdata)
+```
+
+```{r}
+attach(lfpdata)
+```
+
+```{r}
+typeof(lfp)
+typeof(k5)
+typeof(k618)
+typeof(age)
+typeof(wc)
+typeof(age3039)
+typeof(age4049)
+typeof(age50plus)
+typeof(agecat)
+
+```
+```{r}
+table(agecat,wc)
+```
+
+```{r}
+lpm<-lm(lfp ~k5+k618+age+wc+hc+lwg+inc+agecat,data=lfpdata)
+```
+
+```{r}
+summary(lpm)
+```
+
+
+```{r}
+lfpdata<-lfpdata%>%
+  mutate(agecat=as.factor(agecat))
+```
+
+```{r}
+typeof(agecat)
+```
+
+```{r}
+lpm1<-lm(lfp ~k5+k618+age+wc+hc+lwg+inc+agecat,data=lfpdata)
+```
+
+```{r}
+summary(lpm1)
+```
+
+```{r}
+Y=cbind(lfp)
+X=cbind(k5,k618,age,wc,hc,lwg,inc,agecat)
+```
+
+
+```{r}
+lpm2<-lm(Y~X)
+```
+
+
+```{r}
+summary(lpm2)
+```
+
+In the above regression model , there is problem with agecat variable. The R is not reading agecat variable as factor variable despite transforming it to that when we use attach function.
+
+
+```{r}
+detach(lfpdata)
+```
+
+# creating dummy variables
+
+```{r}
+lfpdata$agecat<-as.integer(lfpdata$agecat)
+```
+
+```{r}
+lfpdata <- lfpdata %>%
+  mutate(agecat30_39=ifelse(agecat==1,1,0))%>%
+  mutate(agecat40_49=ifelse(agecat==2,1,0))%>%
+  mutate(agecat50=ifelse(agecat==3,1,0))
+
+```
+
+```{r}
+names(lfpdata)
+```
+#LPM
+```{r}
+lpm3<-lm(lfp ~k5+k618+age+wc+hc+lwg+inc+factor(agecat),data=lfpdata)
+```
+
+```{r}
+summary(lpm3)
+```
+```{r}
+summary(lpm1)
+```
+```{r}
+lpm4<-lm(lfp ~ k5 + k618 + age + wc + hc + lwg + inc +age4049+age50plus,data=lfpdata)
+```
+
+
+```{r}
+summary(lpm4)
+```
+#predicted prob: LPM
+```{r}
+lfpdata$lpm_predict<-predict(lpm4)
+```
+
+```{r}
+summary(lfpdata$lpm_predict)
+```
+
+
+#Logit model
+
+```{r}
+attach(lfpdata)
+```
+
+```{r}
+logit<- glm(lfp ~ k5 + k618 + age + wc + hc + lwg + inc +age4049+age50plus, family=binomial (link = "logit"))
+```
+
+```{r}
+summary(logit)
+```
+1. for a unit changes in x_k , we expect the logit to change by beta_k holding other variable constant. The interpretation is simple and the change does not depend on level of any other variable. But, unfortunately it does not convey any intuitive understanding of what a change in the logit means.
+
+
+
+```{r}
+names(logit)
+```
+```{r}
+library(stargazer)
+```
+
+```{r}
+stargazer(logit,type = "html",out="logit.htm")
+```
+
+```{r}
+stargazer(logit,type = "text",out="logit.htm")
+
+```
+
+# Logit model odds ratios
+```{r}
+exp(logit$coefficients)
+```
+# odd ratio and 95% CI
+
+```{r}
+exp(cbind(OR = coef(logit), confint(logit)))
+```
+The intercept of odd ratio is not generally interepeted.
+
+
+# odd ratio- alternative way ( using mfx package)
+
+```{r}
+logitor<-logitor(lfp ~ k5 + k618 + age + wc + hc + lwg + inc + age4049 + 
+    age50plus,data = lfpdata)
+```
+
+```{r}
+logitor
+```
+
+1. For each additional child the odd of being in labour force decline by factor of .23 ([.23-1]*100=77 %) keeping other variables constant. 
+2. Being 10 year older, decrease the odd by a factor of .70(=exp(-.035*10)) holding other variable constant 
+3.
+
+```{r}
+logit.or<-exp(coef(logit))
+logit.or
+```
+
+```{r}
+stargazer(logit,type="text", coef = list(logit.or),out="logitor.htm")
+```
+# predicted probability- logit model
+
+The logit model can be written as (Gelman and Hill, 2007):
+
+pr(y_i=1)= logit^{-1}(x_i beta)
+
+in this example, 
+
+```{r}
+coef(logit)
+```
+
+pr(y_i=1)=logit^{-1}(2.24841024 -1.44349981*k5 -0.07347400*k168 -0.03484062*age  +0.80486927*wc + 0.11887926*hc+  0.60527713*lwg -0.03465535*inc -0.28356319*age4049 -0.63754910*age50plus )
+
+
+Estimating the probability at mean point of each predictor can be done by inverting the logit model. Gelman and Hill (2007, pg. 81) provide a function for this, also available in the R package - arm - ( see printon univesity material)
+
+
+```{r}
+invlogit=function(x){1/(1+exp(-x))}
+
+```
+
+```{r}
+invlogit(coef(logit)[1]+
+           coef(logit)[2]*mean(lfpdata$k5)+
+           coef(logit)[3]*mean(lfpdata$k618)+
+           coef(logit)[4]*mean(lfpdata$age)+
+           coef(logit)[7]*mean(lfpdata$lwg)+
+           coef(logit)[8]*mean(lfpdata$inc)+
+           coef(logit)[5]*1+
+           coef(logit)[6]*1+
+           coef(logit)[9]*1+
+           coef(logit)[10]*1)
+```
+
+
+not attended college woman
+
+```{r}
+invlogit(coef(logit)[1]+
+           coef(logit)[2]*mean(lfpdata$k5)+
+           coef(logit)[3]*mean(lfpdata$k618)+
+           coef(logit)[4]*mean(lfpdata$age)+
+           coef(logit)[7]*mean(lfpdata$lwg)+
+           coef(logit)[8]*mean(lfpdata$inc)+
+           coef(logit)[5]*0+
+           coef(logit)[6]*1+
+           coef(logit)[9]*1+
+           coef(logit)[10]*1)
+```
+
+husband is also not attended 
+
+```{r}
+invlogit(coef(logit)[1]+
+           coef(logit)[2]*mean(lfpdata$k5)+
+           coef(logit)[3]*mean(lfpdata$k618)+
+           coef(logit)[4]*mean(lfpdata$age)+
+           coef(logit)[7]*mean(lfpdata$lwg)+
+           coef(logit)[8]*mean(lfpdata$inc)+
+           coef(logit)[5]*0+
+           coef(logit)[6]*0+
+           coef(logit)[9]*1+
+           coef(logit)[10]*1)
+```
+
+# Average proability
+
+```{r}
+lfpdata$plogit<- predict(logit, type="response")
+summary(lfpdata$plogit)
+
+```
+
+
+```{r}
+table(true = lfp, pred = round(fitted(logit))) 
+```
+
+
+
+# Logit model average marginal effects
+```{r}
+
+LogitScalar <- mean(dlogis(predict(logit, type = "link")))
+LogitScalar * coef(logit)
+```
+
+#using mfx: marginal effect
+```{r}
+logitmfx(lfp ~ k5 + k618 + age + wc + hc + lwg + inc + age4049 + 
+    age50plus,data = lfpdata)
+```
+
+marginal effect show the change in probability when the predictor or independent variable increases by one unit. for continuous variable this represent the instantaneous change given that the unit may be very small. For binary variables, the changes is from 0 to 1, so one unit as it is usually thought. 
+
+#probit model
+
+```{r}
+probit<- glm(lfp ~ k5 + k618 + age + wc + hc + lwg + inc +age4049+age50plus, family=binomial (link = "probit"))
+
+```
+
+```{r}
+summary(probit)
+```
+#pobit marginal effect (mfx)
+```{r}
+probitmfx(lfp ~ k5 + k618 + age + wc + hc + lwg + inc + age4049 + 
+    age50plus,data = lfpdata)
+```
+
+# Probit model predicted probabilities
+```{r}
+lfpdata$pprobit<- predict(probit, type="response")
+summary(lfpdata$pprobit)
+
+```
+
+
+
+# predicted probability with SE
+```{r}
+newdata<-lfpdata
+```
+
+```{r}
+newdata1<-newdata[,3:11]
+```
+
+```{r}
+newdata1[, c("p", "se")] <- predict(probit, newdata1, type = "response", se.fit = TRUE)[-3]
+```
+
+
+```{r}
+newdata1[, c("p_logit", "se_plogit")] <- predict(probit, newdata1, type = "response", se.fit = TRUE) [-3]
+```
+
+
+# McFadden's Pseudo R-squar
+```{r}
+probit0<-update(probit, formula= lfp ~ 1)
+McFadden<- 1-as.vector(logLik(probit)/logLik(probit0))
+McFadden
+```
+x
+
+
+#wald test 
+
+```{r}
+install.packages("aod")
+```
+```{r}
+library(aod)
+```
+
+We can test for an overall effect of two variables (age4049 and age50plus) using the wald.test function of the aod library. The order in which the coefficients are given in the table of coefficients is the same as the order of the terms in the model. This is important because the wald.test function refers to the coefficients by their order in the model. We use the wald.test function. b supplies the coefficients, while Sigma supplies the variance covariance matrix of the error terms, finally Terms tells R which terms in the model are to be tested, in this case, terms  9, and 10, are the terms for age4049 and age50plus.
+
+```{r}
+wald.test(b = coef(probit), Sigma = vcov(probit), Terms = 9:10)
+```
+
+```{r}
+wald.test(b = coef(probit), Sigma = vcov(probit), Terms = 8:10)
+```
+
+```{r}
+wald.test(b = coef(probit), Sigma = vcov(probit), Terms = 2)
+```
+
+
+We can also test additional hypotheses about the differences in the coefficients for the different levels of rank. Below we test that the coefficient for age4049 is equal to the coefficient for age50plus. The first line of code below creates a vector l that defines the test we want to perform. In this case, we want to test the difference (subtraction) of the terms for age4049 and age50plus(i.e., the 9th and 10th terms in the model). To contrast these two terms, we multiply one of them by 1, and the other by -1. The other terms in the model are not involved in the test, so they are multiplied by 0. The second line of code below uses L=l to tell R that we wish to base the test on the vector l (rather than using the Terms option as we did above).
+
+
+```{r}
+l <- cbind(0, 0, 0,0,0, 0, 0, 0,1,-1)
+wald.test(b = coef(probit), Sigma = vcov(probit), L = l)
+
+```
+
+
+#Likelihood ratio test
+
+
+```{r}
+library(lmtest)
+```
+
+
+```{r}
+lrtest(probit,probit0)
+```
+
+
