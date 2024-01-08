@@ -1,0 +1,369 @@
+---
+title: "R Notebook"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r}
+library(tidyverse)
+library(openxlsx)
+library(haven)
+library(wooldridge)
+```
+
+```{r}
+getwd()
+```
+
+```{r}
+setwd("/Users/krishna/desktop/DSE")
+```
+
+```{r}
+tcereal <- read_dta("tcereal.dta")
+```
+
+```{r}
+names(tcereal)
+```
+
+```{r}
+attach(tcereal)
+```
+
+```{r}
+table(year)
+```
+
+```{r}
+ggplot(data = tcereal)+ geom_point(mapping = aes(x=gdp,y=tcereal))
+```
+
+```{r}
+tcereal |>
+  ggplot(mapping = aes(x=gdp, y=tcereal)) +
+  geom_point()+
+  geom_smooth()
+```
+
+#Conditioning Plots
+
+```{r}
+coplot(tcereal ~ year|countryname, type="l", data=tcereal)
+```
+
+```{r}
+tcereal<-tcereal%>%
+  group_by(countryname)%>%
+  mutate(avgtcereal=mean(tcereal))
+
+```
+
+```{r}
+ggplot(data = tcereal)+ geom_point(mapping = aes(x=countrycode,y=avgtcereal))
+
+```
+
+
+```{r}
+ggplot(data = tcereal)+ geom_point(mapping = aes(x=lngdp,y=lntcereal))
+
+```
+
+```{r}
+tcereal |>
+  ggplot(mapping=aes(x=lngdp, y=lntcereal)) +
+  geom_point() +
+  geom_smooth()
+```
+
+#Pooled OLS
+
+```{r}
+ols<-lm(lntcereal~lngdp,data=tcereal)
+summary(ols)
+```
+
+```{r}
+tcereal$yhat_ols <- fitted(ols)
+```
+
+#panel data regression
+
+```{r}
+library(plm)
+```
+
+```{r}
+pooling<-plm(lntcereal~lngdp,data=tcereal,model="pooling")
+
+```
+
+```{r}
+summary(pooling)
+```
+
+```{r}
+ggplot(data = tcereal)+ geom_point(mapping = aes(x=lngdp,y=lntcereal))
+
+```
+```{r}
+tcereal |>
+  ggplot(mapping = aes(x=lngdp, y=lntcereal)) +
+  geom_point() +
+  geom_smooth(method = "lm", color="red")
+```
+
+#FELSDV Model
+
+```{r}
+FELSDV<-lm(lntcereal~lngdp+factor(countryname),data=tcereal)
+```
+
+```{r}
+summary(FELSDV)
+```
+
+```{r}
+FELSDV_1<-lm(lntcereal~lngdp+factor(countryname)-1,data=tcereal)
+```
+
+```{r}
+summary(FELSDV_1)
+```
+
+```{r}
+tcereal$yhat_FELSDV<-fitted(FELSDV)
+```
+
+#Fixed Effect Model
+
+```{r}
+FE<-plm(lntcereal~lngdp,data = tcereal,index=c("countryname","year"),model = "within")
+```
+
+```{r}
+summary(FE)
+```
+
+The coeffof lngdp indicates what percentage tcereal changes overtime, on average per country, when gdp increases by one percent.
+
+```{r}
+FE_between<-plm(log(tcereal)~log(gdp),data = tcereal,index=c("countryname","year"),model = "between")
+```
+
+```{r}
+summary(FE_between)
+```
+
+#Display the fixed effects (constants for each country)
+
+```{r}
+fixef(FE)
+```
+
+#Testing for fixed effect H0:OLS is better than FE
+
+```{r}
+pFtest(FE, ols)
+```
+
+#Random Effect Model
+
+```{r}
+RE<-plm(lntcereal~lngdp,data = tcereal,index=c("countryname","year"),model = "random")
+```
+
+```{r}
+summary(RE)
+```
+
+Interpretation of the coefficients is tricky since they include both the within-entity and between-entity effects. In the case of tcereal data represents the average effect of income over tcereal consumption when income changes across time and between countries by one percent
+
+#Hausman Test
+
+```{r}
+phtest(FE,RE)
+```
+
+# Testing Time Effect
+
+```{r}
+FE_2ways<-plm(lntcereal~lngdp, data=tcereal, index = c("countryname","year"),effect="twoways",model = "within")
+```
+
+```{r}
+summary(FE_2ways)
+```
+
+```{r}
+FE1_2ways<-plm(lntcereal~lngdp +factor(year), data=tcereal, index = c("countryname","year"),model = "within")
+```
+
+```{r}
+summary(FE1_2ways)
+```
+
+# F test
+
+```{r}
+pFtest(FE, FE1_2ways)
+```
+
+```{r}
+plmtest(FE, c("time"),type=("bp"))
+```
+
+#Testing individual and Time effect BP
+
+```{r}
+plmtest(pooling,effect = "twoways",type="bp")
+```
+
+GHM
+
+```{r}
+plmtest(pooling,effect = "twoways",type="ghm")
+```
+
+#Poolability test #pooled model
+
+```{r}
+pooled<-plm(lntcereal~lngdp,data=tcereal,model="pooling")
+```
+
+```{r}
+summary(pooled)
+```
+
+```{r}
+pFtest(FE,pooled)
+```
+
+# Diagnostic Test
+
+#1. Test for Autocorrelation H0: No autocorrelation
+
+```{r}
+pbgtest(FE,order = 2)
+```
+
+Wooldridge's test for serial correlation in FE panels
+
+```{r}
+pwartest(FE)
+```
+
+#2. Testing cross sectional dependence/ contemporance corr. HO: residuals across cross sectional units are not correlated
+
+Cross-sectional dependence constitutes a problem for many (microeconometric) panel datasets as it can arise even when the subjects are randomly sampled. The reasons for spatial correlation in the disturbances of panel models are manifold. Typically, it arises because social norms, psychological behavior patterns, and herd behavior cannot be quantitatively measured and thus enter panel regressions as unobserved common factors.
+
+```{r}
+pcdtest(FE,test = c("lm"))
+```
+
+```{r}
+pcdtest(FE,test = c("cd"))
+```
+
+#3. Testing hetrocedasticity
+
+```{r}
+library(lmtest)
+```
+
+```{r}
+bptest(FE,studentize = F)
+```
+
+```{r}
+bptest(lntcereal~lngdp+factor(countryname),data=tcereal,studentize = F)
+```
+
+#4. Testing Random effect
+
+```{r}
+plmtest(pooled,type = "bp")
+```
+
+# 5. Testing Unit root
+
+```{r}
+panel.set<-pdata.frame(tcereal,index= c("countryname", "year"))
+```
+
+```{r}
+library(tseries)
+```
+
+```{r}
+adf.test(panel.set$lntcereal,k=2)
+```
+
+# controlling Hetrocedasticity
+
+```{r}
+summary(RE,vcov = vcovHC)
+```
+
+```{r}
+library("lmtest")
+coeftest(RE,vcovHC,df=Inf)
+```
+
+#controlling hetro and autocorrelation
+
+```{r}
+coeftest(ols, vcov. = vcovHAC)
+```
+
+```{r}
+coeftest(FE, vcov.=vcovSCC)
+```
+
+```{r}
+summary(FE, vcov = function(x) vcovSCC(x, method="arellano", type="HC1"))
+```
+
+```{r}
+summary(FE,vcov = vcovDC)
+```
+
+```{r}
+summary(RE,vcov = vcovHC)
+```
+
+in the above coefficients are same but the SE are different . it is because of default setting of vcovHC.lm and vcovHC.plm methods. Only if one overrides the defaults, here, specifying the methodas 'white1' and the small sample correction as 'HC3', the lm results will be replicated ( pg. 113, Panel data econometrics with R)
+
+#using fixest library
+
+```{r}
+library(fixest)
+```
+
+```{r}
+FE_fixest=feols(lntcereal~ lngdp|countryname+year, panel.id = ~countryname +year, data=tcereal)
+```
+
+```{r}
+summary(FE_fixest)
+```
+
+Stata output
+
+.1152359 .0096816 11.90 0.000
+
+```{r}
+etable(FE_fixest, vcov="twoway")
+```
+
+```{r}
+summary(FE_fixest, "newey_west")
+```
+
+```{r}
+summary(FE_fixest, "DK")
+```
+
+lngdp \| .1152359 .0071821 16.04 0.000
